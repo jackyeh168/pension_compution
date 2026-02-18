@@ -45,6 +45,26 @@
         }
         .card h3 { font-size: 16px; color: #475569; margin-bottom: 14px; }
 
+        .section-divider {
+            border: none; border-top: 2px dashed #cbd5e1; margin: 36px 0;
+        }
+        .section-title {
+            text-align: center; font-size: 20px; font-weight: 700; color: #475569; margin-bottom: 20px;
+        }
+        .saving-inputs {
+            display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
+        }
+        .saving-inputs .field { flex: 1; min-width: 160px; }
+        .saving-inputs .field label { display: block; font-size: 13px; color: #64748b; margin-bottom: 4px; }
+        .saving-inputs .field input {
+            width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px;
+            font-size: 15px; outline: none; background: #f8fafc; color: #1e293b;
+        }
+        .saving-inputs .field input:focus { border-color: #3b82f6; }
+        .saving-result {
+            font-size: 28px; font-weight: 700; color: #6366f1; margin-top: 8px;
+        }
+
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th { text-align: left; padding: 8px 10px; background: #f1f5f9; color: #64748b; font-weight: 600; }
         td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
@@ -126,6 +146,28 @@
                 <thead><tr><th>預期報酬率</th><th>最小初始資金（元）</th></tr></thead>
                 <tbody></tbody>
             </table>
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-title">儲蓄規劃計算器</div>
+
+        <div class="card">
+            <h3>複利現值試算</h3>
+            <div class="saving-inputs">
+                <div class="field">
+                    <label>目標金額（元）</label>
+                    <input id="savingTarget" type="number" value="9331387" step="10000" oninput="calcSaving()">
+                </div>
+                <div class="field">
+                    <label>預期年投報率（%）</label>
+                    <input id="savingRate" type="number" value="8" step="0.5" min="0" max="30" oninput="calcSaving()">
+                </div>
+                <div class="field">
+                    <label>放置年限（年）</label>
+                    <input id="savingYears" type="number" value="20" step="1" min="1" oninput="calcSaving()">
+                </div>
+            </div>
+            <div>所需本金 = <span class="saving-result" id="savingResult">—</span> 元</div>
         </div>
     </div>
 </div>
@@ -263,10 +305,24 @@ function calculate() {
         tr.innerHTML = `<td>${(nominal * 100).toFixed(1)}%</td><td>${fmt(result.minCapital)}</td>`;
         sTbody.appendChild(tr);
     });
+
+    // 連動儲蓄規劃計算器
+    document.getElementById("savingTarget").value = minCapital;
+    calcSaving();
+}
+
+function calcSaving() {
+    const target = Number(document.getElementById("savingTarget").value);
+    const rate = Number(document.getElementById("savingRate").value) / 100;
+    const years = Number(document.getElementById("savingYears").value);
+    if (rate < 0 || years <= 0) { document.getElementById("savingResult").textContent = "—"; return; }
+    const principal = target / Math.pow(1 + rate, years);
+    document.getElementById("savingResult").textContent = fmt(principal);
 }
 
 // 頁面載入時自動計算一次
 calculate();
+calcSaving();
 </script>
 </body>
 </html>
