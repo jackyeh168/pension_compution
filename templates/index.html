@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>退休金最小初始資金計算器</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, "Microsoft JhengHei", sans-serif; background: #f5f7fa; color: #333; }
+        .layout { display: flex; min-height: 100vh; }
+
+        /* 側邊欄 */
+        .sidebar {
+            width: 300px; min-width: 300px; background: #1e293b; color: #e2e8f0;
+            padding: 24px; display: flex; flex-direction: column; gap: 20px;
+        }
+        .sidebar h2 { font-size: 18px; color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 12px; }
+        .field label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
+        .field input {
+            width: 100%; padding: 8px 10px; border: 1px solid #475569; border-radius: 6px;
+            background: #0f172a; color: #f1f5f9; font-size: 15px; outline: none;
+        }
+        .field input:focus { border-color: #60a5fa; }
+        .btn {
+            padding: 12px; border: none; border-radius: 8px; cursor: pointer;
+            font-size: 16px; font-weight: 600; background: #3b82f6; color: #fff;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #2563eb; }
+
+        /* 主內容 */
+        .main { flex: 1; padding: 32px; overflow-y: auto; }
+        .metric {
+            background: linear-gradient(135deg, #3b82f6, #6366f1); color: #fff;
+            border-radius: 12px; padding: 24px 32px; margin-bottom: 28px;
+            box-shadow: 0 4px 14px rgba(59,130,246,0.3);
+        }
+        .metric .label { font-size: 14px; opacity: 0.85; }
+        .metric .value { font-size: 36px; font-weight: 700; margin-top: 4px; }
+
+        .card {
+            background: #fff; border-radius: 10px; padding: 20px 24px;
+            margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .card h3 { font-size: 16px; color: #475569; margin-bottom: 14px; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; padding: 8px 10px; background: #f1f5f9; color: #64748b; font-weight: 600; }
+        td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+        tr:last-child td { border-bottom: none; }
+
+        .chart-wrap { max-width: 100%; height: 360px; }
+        #assetChart { width: 100% !important; height: 100% !important; }
+
+        .last-year { font-size: 18px; }
+        .last-year strong { color: #3b82f6; }
+
+        @media (max-width: 768px) {
+            .layout { flex-direction: column; }
+            .sidebar { width: 100%; min-width: auto; }
+        }
+    </style>
+</head>
+<body>
+<div class="layout">
+    <!-- 側邊欄 -->
+    <div class="sidebar">
+        <h2>參數設定</h2>
+        <div class="field">
+            <label>每年生活費（元）</label>
+            <input id="annualExpense" type="number" value="600000" step="10000">
+        </div>
+        <div class="field">
+            <label>實質報酬率（%）</label>
+            <input id="realReturnRate" type="number" value="5" step="0.5" min="0" max="30">
+        </div>
+        <div class="field">
+            <label>每年政府退休金（元）</label>
+            <input id="govtPension" type="number" value="100000" step="10000">
+        </div>
+        <button class="btn" onclick="calculate()">計算</button>
+    </div>
+
+    <!-- 主內容區 -->
+    <div class="main">
+        <div class="metric">
+            <div class="label">最小初始資金</div>
+            <div class="value" id="minCapital">—</div>
+        </div>
+
+        <div class="card">
+            <h3>前 5 年模擬明細</h3>
+            <div style="overflow-x:auto">
+                <table id="first5Table">
+                    <thead>
+                        <tr>
+                            <th>年度</th><th>年初資產</th><th>當年生活費</th>
+                            <th>政府退休金</th><th>從股票提領</th><th>報酬後資產</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>第 45 年結果</h3>
+            <p class="last-year" id="lastYear">—</p>
+        </div>
+
+        <div class="card">
+            <h3>45 年資產變化走勢</h3>
+            <div class="chart-wrap">
+                <canvas id="assetChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>敏感度分析（不同投報率）</h3>
+            <table id="sensitivityTable">
+                <thead><tr><th>實質報酬率</th><th>最小初始資金（元）</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let chart = null;
+
+function fmt(n) {
+    return Math.round(n).toLocaleString("zh-TW");
+}
+
+async function calculate() {
+    const body = {
+        annualExpense:  Number(document.getElementById("annualExpense").value),
+        realReturnRate: Number(document.getElementById("realReturnRate").value) / 100,
+        govtPension:    Number(document.getElementById("govtPension").value),
+    };
+
+    const res = await fetch("/api/calc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    const data = await res.json();
+
+    // 主要指標
+    document.getElementById("minCapital").textContent = fmt(data.minCapital) + " 元";
+
+    // 前 5 年表格
+    const tbody = document.querySelector("#first5Table tbody");
+    tbody.innerHTML = "";
+    data.records.slice(0, 5).forEach(r => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${r.year}</td><td>${fmt(r.beginAsset)}</td><td>${fmt(r.livingCost)}</td>` +
+            `<td>${fmt(r.govtPension)}</td><td>${fmt(r.stockWithdrawn)}</td><td>${fmt(r.endAsset)}</td>`;
+        tbody.appendChild(tr);
+    });
+
+    // 第 45 年
+    const last = data.records[data.records.length - 1];
+    document.getElementById("lastYear").innerHTML =
+        `結束時剩餘資金：<strong>${fmt(last.endAsset)} 元</strong>`;
+
+    // 走勢圖
+    const labels = data.records.map(r => r.year);
+    const values = data.records.map(r => r.endAsset);
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById("assetChart"), {
+        type: "line",
+        data: {
+            labels,
+            datasets: [{
+                label: "報酬後資產（元）",
+                data: values,
+                borderColor: "#3b82f6",
+                backgroundColor: "rgba(59,130,246,0.1)",
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                y: { ticks: { callback: v => fmt(v) } },
+            },
+            plugins: {
+                tooltip: { callbacks: { label: ctx => fmt(ctx.parsed.y) + " 元" } },
+            },
+        },
+    });
+
+    // 敏感度分析
+    const sTbody = document.querySelector("#sensitivityTable tbody");
+    sTbody.innerHTML = "";
+    data.sensitivity.forEach(s => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${(s.returnRate * 100).toFixed(1)}%</td><td>${fmt(s.minCapital)}</td>`;
+        sTbody.appendChild(tr);
+    });
+}
+
+// 頁面載入時自動計算一次
+calculate();
+</script>
+</body>
+</html>
