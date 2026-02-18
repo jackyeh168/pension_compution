@@ -131,36 +131,87 @@
 </div>
 
 <script>
+// ===== 計算引擎 =====
+
+function simulate(initialCapital, annualExpense, realReturnRate, govtPension, years) {
+    const records = [];
+    let capital = initialCapital;
+    const withdrawn = Math.max(0, annualExpense - govtPension);
+
+    for (let yr = 1; yr <= years; yr++) {
+        const beginning = capital;
+        const afterWithdrawal = capital - withdrawn;
+        const ending = afterWithdrawal * (1 + realReturnRate);
+
+        records.push({
+            year: yr,
+            beginAsset: Math.round(beginning * 100) / 100,
+            livingCost: annualExpense,
+            govtPension: govtPension,
+            stockWithdrawn: Math.round(withdrawn * 100) / 100,
+            endAsset: Math.round(ending * 100) / 100,
+        });
+        capital = ending;
+    }
+    return records;
+}
+
+function survives(capital, annualExpense, realReturnRate, govtPension, years) {
+    let bal = capital;
+    const withdrawn = Math.max(0, annualExpense - govtPension);
+    for (let yr = 1; yr <= years; yr++) {
+        bal = (bal - withdrawn) * (1 + realReturnRate);
+        if (bal < 0) return false;
+    }
+    return true;
+}
+
+function findMinimumCapital(annualExpense, realReturnRate, govtPension, years) {
+    let lower = 0;
+    let upper = annualExpense * years;
+
+    while (upper - lower > 0.5) {
+        const mid = (lower + upper) / 2;
+        if (survives(mid, annualExpense, realReturnRate, govtPension, years)) {
+            upper = mid;
+        } else {
+            lower = mid;
+        }
+    }
+
+    const minCapital = Math.round(upper);
+    const records = simulate(minCapital, annualExpense, realReturnRate, govtPension, years);
+    return { minCapital, records };
+}
+
+// ===== UI =====
+
 let chart = null;
 
 function fmt(n) {
     return Math.round(n).toLocaleString("zh-TW");
 }
 
-async function calculate() {
-    const body = {
-        annualExpense: Number(document.getElementById("annualExpense").value),
-        nominalReturn: Number(document.getElementById("nominalReturn").value) / 100,
-        inflationRate: Number(document.getElementById("inflationRate").value) / 100,
-        govtPension:   Number(document.getElementById("govtPension").value),
-    };
+function calculate() {
+    const annualExpense = Number(document.getElementById("annualExpense").value);
+    const nominalReturn = Number(document.getElementById("nominalReturn").value) / 100;
+    const inflationRate = Number(document.getElementById("inflationRate").value) / 100;
+    const govtPension = Number(document.getElementById("govtPension").value);
 
-    const res = await fetch("/api/calc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    const data = await res.json();
+    const years = 45;
+    const realReturn = nominalReturn - inflationRate;
+
+    const { minCapital, records } = findMinimumCapital(annualExpense, realReturn, govtPension, years);
 
     // 主要指標
-    const realPct = (body.nominalReturn - body.inflationRate) * 100;
-    document.getElementById("realRate").textContent = realPct.toFixed(2) + "%";
-    document.getElementById("minCapital").textContent = fmt(data.minCapital) + " 元";
+    const realPct = (realReturn * 100).toFixed(2);
+    document.getElementById("realRate").textContent = realPct + "%";
+    document.getElementById("minCapital").textContent = fmt(minCapital) + " 元";
 
     // 前 5 年表格
     const tbody = document.querySelector("#first5Table tbody");
     tbody.innerHTML = "";
-    data.records.slice(0, 5).forEach(r => {
+    records.slice(0, 5).forEach(r => {
         const tr = document.createElement("tr");
         tr.innerHTML = `<td>${r.year}</td><td>${fmt(r.beginAsset)}</td><td>${fmt(r.livingCost)}</td>` +
             `<td>${fmt(r.govtPension)}</td><td>${fmt(r.stockWithdrawn)}</td><td>${fmt(r.endAsset)}</td>`;
@@ -168,13 +219,13 @@ async function calculate() {
     });
 
     // 第 45 年
-    const last = data.records[data.records.length - 1];
+    const last = records[records.length - 1];
     document.getElementById("lastYear").innerHTML =
         `結束時剩餘資金：<strong>${fmt(last.endAsset)} 元</strong>`;
 
     // 走勢圖
-    const labels = data.records.map(r => r.year);
-    const values = data.records.map(r => r.endAsset);
+    const labels = records.map(r => r.year);
+    const values = records.map(r => r.endAsset);
     if (chart) chart.destroy();
     chart = new Chart(document.getElementById("assetChart"), {
         type: "line",
@@ -201,12 +252,15 @@ async function calculate() {
         },
     });
 
-    // 敏感度分析
+    // 敏感度分析：6%、使用者設定值、10%
+    const nominals = [...new Set([0.06, nominalReturn, 0.10])].sort((a, b) => a - b);
     const sTbody = document.querySelector("#sensitivityTable tbody");
     sTbody.innerHTML = "";
-    data.sensitivity.forEach(s => {
+    nominals.forEach(nominal => {
+        const rr = nominal - inflationRate;
+        const result = findMinimumCapital(annualExpense, rr, govtPension, years);
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${(s.returnRate * 100).toFixed(1)}%</td><td>${fmt(s.minCapital)}</td>`;
+        tr.innerHTML = `<td>${(nominal * 100).toFixed(1)}%</td><td>${fmt(result.minCapital)}</td>`;
         sTbody.appendChild(tr);
     });
 }
