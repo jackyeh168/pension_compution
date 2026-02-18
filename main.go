@@ -17,9 +17,10 @@ var tmpl = template.Must(template.ParseFS(templateFS, "templates/index.html"))
 
 // CalcRequest 前端傳入的計算參數。
 type CalcRequest struct {
-	AnnualExpense  float64 `json:"annualExpense"`
-	RealReturnRate float64 `json:"realReturnRate"`
-	GovtPension    float64 `json:"govtPension"`
+	AnnualExpense float64 `json:"annualExpense"`
+	NominalReturn float64 `json:"nominalReturn"`
+	InflationRate float64 `json:"inflationRate"`
+	GovtPension   float64 `json:"govtPension"`
 }
 
 // CalcResponse 回傳給前端的計算結果。
@@ -57,12 +58,20 @@ func handleCalc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	const years = 45
+
+	// 實質報酬率 = 預期報酬率 − 預期通膨率
+	realReturn := req.NominalReturn - req.InflationRate
+
 	minCap, records := FindMinimumCapital(
-		req.AnnualExpense, req.RealReturnRate, req.GovtPension, years,
+		req.AnnualExpense, realReturn, req.GovtPension, years,
 	)
 
-	// 敏感度分析：3%、使用者選擇的報酬率、7% 三種情境
-	rateSet := map[float64]bool{0.03: true, req.RealReturnRate: true, 0.07: true}
+	// 敏感度分析：以使用者通膨率為基準，比較三種名目報酬率對應的實質報酬率
+	nominals := []float64{0.06, req.NominalReturn, 0.10}
+	rateSet := map[float64]bool{}
+	for _, n := range nominals {
+		rateSet[n] = true
+	}
 	rates := make([]float64, 0, len(rateSet))
 	for rate := range rateSet {
 		rates = append(rates, rate)
@@ -70,11 +79,12 @@ func handleCalc(w http.ResponseWriter, r *http.Request) {
 	sort.Float64s(rates)
 
 	sensitivity := make([]SensitivityRow, 0, len(rates))
-	for _, rate := range rates {
+	for _, nominal := range rates {
+		rr := nominal - req.InflationRate
 		cap, _ := FindMinimumCapital(
-			req.AnnualExpense, rate, req.GovtPension, years,
+			req.AnnualExpense, rr, req.GovtPension, years,
 		)
-		sensitivity = append(sensitivity, SensitivityRow{ReturnRate: rate, MinCapital: cap})
+		sensitivity = append(sensitivity, SensitivityRow{ReturnRate: nominal, MinCapital: cap})
 	}
 
 	resp := CalcResponse{

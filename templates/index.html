@@ -72,8 +72,12 @@
             <input id="annualExpense" type="number" value="600000" step="10000">
         </div>
         <div class="field">
-            <label>實質報酬率（%）</label>
-            <input id="realReturnRate" type="number" value="5" step="0.5" min="0" max="30">
+            <label>預期報酬率（%）</label>
+            <input id="nominalReturn" type="number" value="8" step="0.5" min="0" max="30">
+        </div>
+        <div class="field">
+            <label>預期通貨膨脹率（%）</label>
+            <input id="inflationRate" type="number" value="3" step="0.5" min="0" max="20">
         </div>
         <div class="field">
             <label>每年政府退休金（元）</label>
@@ -85,7 +89,7 @@
     <!-- 主內容區 -->
     <div class="main">
         <div class="metric">
-            <div class="label">最小初始資金</div>
+            <div class="label">最小初始資金（實質報酬率：<span id="realRate">—</span>）</div>
             <div class="value" id="minCapital">—</div>
         </div>
 
@@ -117,9 +121,9 @@
         </div>
 
         <div class="card">
-            <h3>敏感度分析（不同投報率）</h3>
+            <h3>敏感度分析（不同預期報酬率）</h3>
             <table id="sensitivityTable">
-                <thead><tr><th>實質報酬率</th><th>最小初始資金（元）</th></tr></thead>
+                <thead><tr><th>預期報酬率</th><th>最小初始資金（元）</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -135,9 +139,10 @@ function fmt(n) {
 
 async function calculate() {
     const body = {
-        annualExpense:  Number(document.getElementById("annualExpense").value),
-        realReturnRate: Number(document.getElementById("realReturnRate").value) / 100,
-        govtPension:    Number(document.getElementById("govtPension").value),
+        annualExpense: Number(document.getElementById("annualExpense").value),
+        nominalReturn: Number(document.getElementById("nominalReturn").value) / 100,
+        inflationRate: Number(document.getElementById("inflationRate").value) / 100,
+        govtPension:   Number(document.getElementById("govtPension").value),
     };
 
     const res = await fetch("/api/calc", {
@@ -148,6 +153,8 @@ async function calculate() {
     const data = await res.json();
 
     // 主要指標
+    const realPct = (body.nominalReturn - body.inflationRate) * 100;
+    document.getElementById("realRate").textContent = realPct.toFixed(2) + "%";
     document.getElementById("minCapital").textContent = fmt(data.minCapital) + " 元";
 
     // 前 5 年表格
