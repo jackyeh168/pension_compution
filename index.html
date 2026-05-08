@@ -103,6 +103,10 @@
             <label>每年政府退休金（元）</label>
             <input id="govtPension" type="number" value="100000" step="10000">
         </div>
+        <div class="field">
+            <label>退休後年數（年）</label>
+            <input id="retirementYears" type="number" value="60" step="1" min="1" max="100">
+        </div>
         <button class="btn" onclick="calculate()">計算</button>
     </div>
 
@@ -129,12 +133,12 @@
         </div>
 
         <div class="card">
-            <h3>第 45 年結果</h3>
+            <h3>第 <span id="lastYearTitle">—</span> 年結果</h3>
             <p class="last-year" id="lastYear">—</p>
         </div>
 
         <div class="card">
-            <h3>45 年資產變化走勢</h3>
+            <h3><span id="chartYearTitle">—</span> 年資產變化走勢</h3>
             <div class="chart-wrap">
                 <canvas id="assetChart"></canvas>
             </div>
@@ -239,8 +243,8 @@ function calculate() {
     const nominalReturn = Number(document.getElementById("nominalReturn").value) / 100;
     const inflationRate = Number(document.getElementById("inflationRate").value) / 100;
     const govtPension = Number(document.getElementById("govtPension").value);
+    const years = Number(document.getElementById("retirementYears").value);
 
-    const years = 45;
     const realReturn = nominalReturn - inflationRate;
 
     const { minCapital, records } = findMinimumCapital(annualExpense, realReturn, govtPension, years);
@@ -260,8 +264,10 @@ function calculate() {
         tbody.appendChild(tr);
     });
 
-    // 第 45 年
+    // 最後一年
     const last = records[records.length - 1];
+    document.getElementById("lastYearTitle").textContent = years;
+    document.getElementById("chartYearTitle").textContent = years;
     document.getElementById("lastYear").innerHTML =
         `結束時剩餘資金：<strong>${fmt(last.endAsset)} 元</strong>`;
 
